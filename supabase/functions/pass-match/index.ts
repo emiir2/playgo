@@ -11,7 +11,8 @@ Deno.serve(async (request) => {
   const activeId = match.active_color === 'black' ? match.black_player_id : match.white_player_id
   if (activeId !== user.user.id) return json({ error: 'Not your turn' }, 409)
   const passes = Number(match.passes ?? 0) + 1; const nextStatus = passes >= 2 ? 'finished' : 'playing'; const result = passes >= 2 ? 'draw' : null
-  const { error: updateError } = await client.from('matches').update({ passes, active_color: match.active_color === 'black' ? 'white' : 'black', status: nextStatus, result, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing')
+  const { data: updated, error: updateError } = await client.from('matches').update({ passes, active_color: match.active_color === 'black' ? 'white' : 'black', status: nextStatus, result, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', match.active_color).select('id').maybeSingle()
+  if (!updated && !updateError) return json({ error: 'Match state changed; refresh and try again' }, 409)
   if (updateError) return json({ error: updateError.message }, 400)
   await client.from('match_events').insert({ match_id: matchId, sequence: (match.moves?.length ?? 0) + passes, player_id: user.user.id, event_type: 'pass', payload: { passes } })
   return json({ ok: true })

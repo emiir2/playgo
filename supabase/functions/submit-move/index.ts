@@ -8,6 +8,7 @@ function group(board: (string | null)[][], row: number, col: number) {
   while (queue.length) { const [r, c] = queue.pop()!, key = `${r},${c}`; if (seen.has(key)) continue; seen.add(key); stones.push([r, c]); for (const [nr, nc] of neighbors(r, c, board.length)) { if (board[nr][nc] === null) liberties.add(`${nr},${nc}`); else if (board[nr][nc] === color && !seen.has(`${nr},${nc}`)) queue.push([nr, nc]) } }
   return { stones, liberties }
 }
+const boardKey = (board: (string | null)[][]) => board.map((line) => line.map((cell) => cell?.[0] ?? '.').join('')).join('/')
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -22,6 +23,12 @@ Deno.serve(async (request) => {
   if (!color) return json({ error: 'You are not a player in this match' }, 403)
   if (match.status !== 'playing') return json({ error: 'Match is over' }, 409)
   if (match.active_color !== color) return json({ error: 'Not your turn' }, 409)
+  const elapsedBeforeMove = Math.max(0, Date.now() - new Date(match.last_move_at).getTime())
+  const remainingBeforeMove = Math.max(0, Number(match[`${color}_clock_ms`] ?? 0) - elapsedBeforeMove)
+  if (remainingBeforeMove <= 0) {
+    await admin.from('matches').update({ status: 'timeout', result: color === 'black' ? 'white' : 'black', [`${color}_clock_ms`]: 0, updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', color)
+    return json({ error: 'Time expired' }, 409)
+  }
   const row = Number(move?.row), col = Number(move?.col), board = match.board as (string | null)[][]
   if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= board.length || col < 0 || col >= board.length) return json({ error: 'Invalid move' }, 400)
   if (board[row][col]) return json({ error: 'Intersection is occupied' }, 409)
@@ -39,11 +46,13 @@ Deno.serve(async (request) => {
   const captures = { black: Number(oldCaptures.black ?? 0), white: Number(oldCaptures.white ?? 0) }
   captures[color] += captured
   const moves = [...(match.moves ?? []), { row, col, player: color, captured, label: `${String.fromCharCode(65 + col)}${board.length - row}` }]
+  const positionHistory = [...(match.position_history ?? []), boardKey(board)]
+  if (positionHistory.length > 1 && positionHistory[positionHistory.length - 2] === boardKey(board)) return json({ error: 'Ko: this position cannot be repeated immediately' }, 409)
   const next = color === 'black' ? 'white' : 'black'
-  const elapsed = Math.max(0, Date.now() - new Date(match.last_move_at).getTime())
+  const elapsed = elapsedBeforeMove
   const clocks = { black: Math.max(0, Number(match.black_clock_ms ?? 0)), white: Math.max(0, Number(match.white_clock_ms ?? 0)) }
   clocks[color] = Math.max(0, clocks[color] - elapsed)
-  const { data: updated, error } = await admin.from('matches').update({ board, moves, captures, active_color: next, passes: 0, black_clock_ms: clocks.black, white_clock_ms: clocks.white, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', color).select('id').single()
+  const { data: updated, error } = await admin.from('matches').update({ board, moves, captures, position_history: positionHistory, active_color: next, passes: 0, black_clock_ms: clocks.black, white_clock_ms: clocks.white, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', color).select('id').single()
   if (error || !updated) return json({ error: error?.message ?? 'Move could not be applied' }, 409)
   return json({ ok: true, matchId })
 })

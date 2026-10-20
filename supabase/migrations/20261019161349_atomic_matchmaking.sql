@@ -54,8 +54,8 @@ begin
     end loop;
   end loop;
 
-  insert into public.matches(black_player_id, white_player_id, board, black_clock_ms, white_clock_ms)
-  values (black_id, white_id, empty_board, main_ms, main_ms)
+  insert into public.matches(black_player_id, white_player_id, board, black_clock_ms, white_clock_ms, time_control)
+  values (black_id, white_id, empty_board, main_ms, main_ms, p_time_control)
   returning id into created_match;
 
   update public.matchmaking_queue set status = 'matched' where id = opponent.id;

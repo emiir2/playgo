@@ -143,7 +143,7 @@ function App() {
         } catch { /* Realtime state remains visible during a transient network failure. */ }
       }
       void sync()
-      const serverTimer = window.setInterval(() => { void sync() }, 5000)
+      const serverTimer = window.setInterval(() => { void sync() }, 10000)
       const displayTimer = window.setInterval(() => {
         if (cancelled) return
         setClocks((value) => ({ ...value, [player]: Math.max(0, value[player] - 1) }))
@@ -168,15 +168,15 @@ function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || screen !== 'match' || !matchId) return
-    const applyMatch = (next: MatchState) => {
+    const applyMatch = (next: MatchState, includeClock = true) => {
       const own = next.blackPlayer.id === auth.user?.id ? next.blackPlayer : next.whitePlayer
       const other = next.blackPlayer.id === auth.user?.id ? next.whitePlayer : next.blackPlayer
-      setUserColor(own.id === next.blackPlayer.id ? 'black' : 'white'); setOpponent(other); setBoard(next.board); setPlayer(next.activeColor); setMoves(next.moves); setCaptures(next.captures); setClocks(next.clocks); setPasses(next.passes); setStatus(next.status); setMessage(next.status === 'playing' ? (next.activeColor === 'black' ? 'Black to play' : 'White to play') : 'Match complete'); setViewedMove(null)
+      setUserColor(own.id === next.blackPlayer.id ? 'black' : 'white'); setOpponent(other); setBoard(next.board); setPlayer(next.activeColor); setMoves(next.moves); setCaptures(next.captures); if (includeClock) setClocks(next.clocks); setPasses(next.passes); setStatus(next.status); setMessage(next.status === 'playing' ? (next.activeColor === 'black' ? 'Black to play' : 'White to play') : 'Match complete'); setViewedMove(null)
     }
     const unsubscribe = supabaseMatchService.subscribe(matchId, applyMatch)
     let cancelled = false
     const refresh = async () => {
-      try { const next = await supabaseMatchService.getMatch(matchId); if (!cancelled) applyMatch(next) } catch { /* retain the last confirmed state during transient network failures */ }
+      try { const next = await supabaseMatchService.getMatch(matchId); if (!cancelled) applyMatch(next, false) } catch { /* retain the last confirmed state during transient network failures */ }
     }
     const fallback = window.setInterval(() => { void refresh() }, 1000)
     return () => { cancelled = true; window.clearInterval(fallback); unsubscribe() }

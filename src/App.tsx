@@ -19,12 +19,25 @@ const presets: TimeControl[] = [{ mainMinutes: 10, incrementSeconds: 0, byoyomiS
 const guest: PlayerInfo = { name: 'Opponent', rank: 'Unranked', avatar: 'OP' }
 
 function App() {
-  const [screen, setScreen] = useState<'home' | 'setup' | 'auth' | 'searching' | 'match'>('home')
+  const [screen, setScreen] = useState<'home' | 'setup' | 'auth' | 'searching' | 'match' | 'learn' | 'puzzles' | 'community'>('home')
   const auth = useAuth()
   useEffect(() => {
     const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.replace(/\/$/, '')
     if (!publicAppUrl || window.location.origin === publicAppUrl) return
     window.location.replace(`${publicAppUrl}${window.location.pathname}${window.location.search}${window.location.hash}`)
+  }, [])
+  useEffect(() => {
+    const navigate = (event: MouseEvent) => {
+      const button = (event.target as HTMLElement).closest('.nav-link')
+      if (!button) return
+      const path = button.textContent?.trim().toLowerCase()
+      if (path === 'play' || path === 'learn' || path === 'puzzles' || path === 'community') {
+        window.history.pushState({}, '', `/${path}`)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    }
+    document.addEventListener('click', navigate)
+    return () => document.removeEventListener('click', navigate)
   }, [])
   const currentUser = useMemo<PlayerInfo>(() => {
     const metadata = auth.user?.user_metadata ?? {}
@@ -58,6 +71,15 @@ function App() {
   const [mobileMenu, setMobileMenu] = useState(false)
   const starPoints = useMemo(() => new Set(['3,3', '3,9', '3,15', '9,3', '9,9', '9,15', '15,3', '15,9', '15,15']), [])
   const setMatchUrl = (id?: string) => { window.history.pushState({}, '', id ? `/${id}` : '/') }
+  useEffect(() => {
+    const applyPath = () => {
+      const path = window.location.pathname.replace(/^\//, '').toLowerCase()
+      if (path === 'play' || path === '' || path === 'learn' || path === 'puzzles' || path === 'community') setScreen('home')
+    }
+    applyPath()
+    window.addEventListener('popstate', applyPath)
+    return () => window.removeEventListener('popstate', applyPath)
+  }, [])
 
   const resetGame = (tc = timeControl) => { const seconds = tc.mainMinutes * 60; setBoard(createBoard()); setPlayer('black'); setMoves([]); setMoveBoards([]); setViewedMove(null); setCaptures({ black: 0, white: 0 }); setHistory([]); setPositionHistory([boardKey(createBoard())]); setPasses(0); setStatus('playing'); setClocks({ black: seconds, white: seconds }); setByoPeriods({ black: tc.byoyomiPeriods, white: tc.byoyomiPeriods }); setMessage('Your turn') }
   const startLocal = () => { setLocalMode(true); setMatchId(`local-${Date.now()}`); setMatchStarted(true); setUserColor('black'); setOpponent(guest); resetGame(timeControl); setScreen('match') }

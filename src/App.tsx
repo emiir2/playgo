@@ -155,6 +155,11 @@ function Matchmaking({ timeControl, onCancel }: { timeControl: TimeControl; onCa
 
 function MatchLayout({ board, player, moves, captures, clocks, status, message, timeControl, starPoints, matchId, viewedMove, user, opponent, userColor, onViewMove, onPlay, onPass, onResign, onUndo, onNew, onHome }: { board: Board; player: Stone; moves: Move[]; captures: { black: number; white: number }; clocks: { black: number; white: number }; status: MatchStatus; message: string; timeControl: TimeControl; starPoints: Set<string>; matchId: string; viewedMove: number | null; user: PlayerInfo; opponent: PlayerInfo; userColor: Stone; onViewMove: (index: number | null) => void; onPlay: (point: Point) => void; onPass: () => void; onResign: () => void; onUndo: () => void; onNew: () => void; onHome: () => void }) {
   const [confirmResign, setConfirmResign] = useState(false)
+  useEffect(() => {
+    if (!matchId.startsWith('local')) return
+    const undoButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Undo'))
+    undoButton?.removeAttribute('disabled')
+  }, [matchId, moves.length])
   const [showMoveNumbers, setShowMoveNumbers] = useState(false)
   const lastMove = moves[moves.length - 1]
   const resultText = status === 'resigned' ? 'Game resigned' : status === 'timeout' ? 'Time expired' : 'Game over'

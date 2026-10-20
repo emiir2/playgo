@@ -112,16 +112,23 @@ function App() {
 
   useEffect(() => {
     if (!['match', 'home'].includes(screen) || status !== 'playing') return
+    if (!localMode && !matchId.startsWith('local')) {
+      let cancelled = false
+      const sync = async () => {
+        try {
+          const nextClocks = await supabaseMatchService.syncClock(matchId)
+          if (!cancelled) setClocks(nextClocks)
+        } catch { /* Realtime state remains visible during a transient network failure. */ }
+      }
+      void sync()
+      const timer = window.setInterval(() => { void sync() }, 1000)
+      return () => { cancelled = true; window.clearInterval(timer) }
+    }
     const timer = window.setInterval(() => {
       setClocks((value) => { const next = Math.max(0, value[player] - 1); if (next === 0 && timeControl.byoyomiSeconds > 0 && byoPeriods[player] > 0) { setByoPeriods((p) => ({ ...p, [player]: p[player] - 1 })); return { ...value, [player]: timeControl.byoyomiSeconds } } if (next === 0) { setStatus('timeout'); setMessage(`${player === 'black' ? 'Black' : 'White'} ran out of time`) } return { ...value, [player]: next } })
-      setActiveMatches((matches) => matches.map((match) => {
-        if (match.id === matchId || match.status !== 'playing') return match
-        const next = Math.max(0, match.clocks[match.player] - 1)
-        return { ...match, clocks: { ...match.clocks, [match.player]: next } }
-      }))
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [screen, status, player, timeControl, byoPeriods])
+  }, [screen, status, player, timeControl, byoPeriods, localMode, matchId])
 
   useEffect(() => {
     if (screen === 'match' && !matchId.startsWith('local')) setMatchUrl(matchId)

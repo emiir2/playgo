@@ -30,5 +30,6 @@ export interface MatchService {
   submitMove(matchId: string, move: Move): Promise<void>
   pass(matchId: string): Promise<void>
   resign(matchId: string): Promise<void>
+  syncClock(matchId: string): Promise<MatchClocks>
   subscribe(matchId: string, listener: (state: MatchState) => void): () => void
 }

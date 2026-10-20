@@ -54,6 +54,7 @@ export const supabaseMatchService: MatchService = {
   async submitMove(matchId, move) { await callFunction('submit-move', { matchId, move }) },
   async pass(matchId) { await callFunction('pass-match', { matchId }) },
   async resign(matchId) { await callFunction('resign-match', { matchId }) },
+  async syncClock(matchId) { const result = await callFunction<{ clocks: MatchState['clocks']; status?: MatchState['status']; result?: MatchState['result'] }>('sync-clock', { matchId }); return result.clocks },
   subscribe(matchId, listener) {
     const client = requireClient()
     void client.from('matches').select('*').eq('id', matchId).single().then(async ({ data }) => { if (data) listener((await withProfiles([data as Record<string, unknown>]))[0]) })

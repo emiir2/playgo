@@ -10,8 +10,15 @@ Deno.serve(async (request) => {
   if (match.status !== 'playing') return json({ error: 'Match is over' }, 409)
   const activeId = match.active_color === 'black' ? match.black_player_id : match.white_player_id
   if (activeId !== user.user.id) return json({ error: 'Not your turn' }, 409)
+  const color = match.active_color as 'black' | 'white'
+  const clockField = color === 'black' ? 'black_clock_ms' : 'white_clock_ms'
+  const remaining = Math.max(0, Number(match[clockField]) - Math.max(0, Date.now() - new Date(match.last_move_at).getTime()))
+  if (remaining <= 0) {
+    await client.from('matches').update({ status: 'timeout', result: color === 'black' ? 'white' : 'black', [clockField]: 0, updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', color)
+    return json({ error: 'Time expired' }, 409)
+  }
   const passes = Number(match.passes ?? 0) + 1; const nextStatus = passes >= 2 ? 'finished' : 'playing'; const result = passes >= 2 ? 'draw' : null
-  const { data: updated, error: updateError } = await client.from('matches').update({ passes, active_color: match.active_color === 'black' ? 'white' : 'black', status: nextStatus, result, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', match.active_color).select('id').maybeSingle()
+  const { data: updated, error: updateError } = await client.from('matches').update({ passes, active_color: match.active_color === 'black' ? 'white' : 'black', status: nextStatus, result, [clockField]: remaining, last_move_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', matchId).eq('status', 'playing').eq('active_color', match.active_color).select('id').maybeSingle()
   if (!updated && !updateError) return json({ error: 'Match state changed; refresh and try again' }, 409)
   if (updateError) return json({ error: updateError.message }, 400)
   await client.from('match_events').insert({ match_id: matchId, sequence: (match.moves?.length ?? 0) + passes, player_id: user.user.id, event_type: 'pass', payload: { passes } })

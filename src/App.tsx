@@ -57,6 +57,7 @@ function App() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const starPoints = useMemo(() => new Set(['3,3', '3,9', '3,15', '9,3', '9,9', '9,15', '15,3', '15,9', '15,15']), [])
+  const setMatchUrl = (id?: string) => { window.history.pushState({}, '', id ? `/${id}` : '/') }
 
   const resetGame = (tc = timeControl) => { const seconds = tc.mainMinutes * 60; setBoard(createBoard()); setPlayer('black'); setMoves([]); setMoveBoards([]); setViewedMove(null); setCaptures({ black: 0, white: 0 }); setHistory([]); setPositionHistory([boardKey(createBoard())]); setPasses(0); setStatus('playing'); setClocks({ black: seconds, white: seconds }); setByoPeriods({ black: tc.byoyomiPeriods, white: tc.byoyomiPeriods }); setMessage('Your turn') }
   const startLocal = () => { setLocalMode(true); setMatchId(`local-${Date.now()}`); setMatchStarted(true); setUserColor('black'); setOpponent(guest); resetGame(timeControl); setScreen('match') }
@@ -76,6 +77,18 @@ function App() {
   }
   const cancelSearch = async () => { if (isSupabaseConfigured && auth.user) { try { await supabaseMatchService.cancelMatch('') } catch { /* keep the visible error state */ } }; setScreen('setup') }
   const setCustomControl = (value: { minutes: number; byoSeconds: number; periods: number }) => { setCustom(value); setTimeControl({ mainMinutes: value.minutes, incrementSeconds: 0, byoyomiSeconds: value.byoSeconds, byoyomiPeriods: value.periods, label: 'Custom' }) }
+
+  useEffect(() => {
+    const pathId = window.location.pathname.replace(/^\//, '')
+    if (!auth.user || !isSupabaseConfigured || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pathId)) return
+    let cancelled = false
+    void supabaseMatchService.getMatch(pathId).then((online) => {
+      if (cancelled) return
+      const color = online.blackPlayer.id === auth.user?.id ? 'black' : 'white'
+      setLocalMode(false); setUserColor(color); setOpponent(color === 'black' ? online.whitePlayer : online.blackPlayer); setMatchId(pathId); setBoard(online.board); setPlayer(online.activeColor); setMoves(online.moves); setCaptures(online.captures); setClocks(online.clocks); setPasses(online.passes); setStatus(online.status); setTimeControl(online.timeControl); setMatchStarted(true); setScreen('match')
+    }).catch(() => { if (!cancelled) window.history.replaceState({}, '', '/') })
+    return () => { cancelled = true }
+  }, [auth.user?.id])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !auth.user) return
@@ -109,6 +122,11 @@ function App() {
     }, 1000)
     return () => window.clearInterval(timer)
   }, [screen, status, player, timeControl, byoPeriods])
+
+  useEffect(() => {
+    if (screen === 'match' && !matchId.startsWith('local')) setMatchUrl(matchId)
+    if (screen !== 'match' && matchStarted && !matchId.startsWith('local')) setMatchUrl()
+  }, [screen, matchId, matchStarted])
 
   useEffect(() => {
     if (!matchStarted || !matchId) return

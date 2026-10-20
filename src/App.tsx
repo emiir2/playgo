@@ -9,14 +9,14 @@ import { supabaseMatchService } from './services/matchService'
 export type TimeControl = { mainMinutes: number; incrementSeconds: number; byoyomiSeconds: number; byoyomiPeriods: number; label: string }
 export type OnlineGameRequest = { timeControl: TimeControl; boardSize: number; colorPreference: 'random' | Stone; reconnect?: boolean; newMatch?: boolean; startedAt?: string }
 export type MatchStatus = 'searching' | 'playing' | 'finished' | 'resigned' | 'timeout' | 'cancelled'
-export type PlayerInfo = { name: string; rank: string; avatar: string }
+export type PlayerInfo = { id: string; name: string; rank: string; avatar: string }
 export type MatchState = { matchId: string; status: MatchStatus; blackPlayer: PlayerInfo; whitePlayer: PlayerInfo; activeColor: Stone; clocks: { black: number; white: number }; board: Board; moves: Move[]; captures: { black: number; white: number }; passes: number; result?: Stone | 'draw' }
 export interface MatchService { findMatch(request: OnlineGameRequest): Promise<{ matchId: string; color?: Stone }>; cancelMatch(matchId: string): Promise<void>; submitMove(matchId: string, move: Move): Promise<void>; pass(matchId: string): Promise<void>; resign(matchId: string): Promise<void>; subscribe(matchId: string, listener: (state: MatchState) => void): () => void }
 type ActiveMatch = { id: string; timeControl: TimeControl; board: Board; player: Stone; moves: Move[]; moveBoards: Board[]; captures: { black: number; white: number }; positionHistory: string[]; passes: number; byoPeriods: { black: number; white: number }; viewedMove: number | null; message: string; clocks: { black: number; white: number }; status: MatchStatus }
 
 const nav = [{ label: 'Play', active: true }, { label: 'Learn', icon: BookOpen }, { label: 'Puzzles', icon: Lightbulb }, { label: 'Community', icon: Users }]
 const presets: TimeControl[] = [{ mainMinutes: 10, incrementSeconds: 0, byoyomiSeconds: 0, byoyomiPeriods: 0, label: 'Blitz' }, { mainMinutes: 20, incrementSeconds: 0, byoyomiSeconds: 0, byoyomiPeriods: 0, label: 'Rapid' }, { mainMinutes: 30, incrementSeconds: 0, byoyomiSeconds: 0, byoyomiPeriods: 0, label: 'Classic' }]
-const guest: PlayerInfo = { name: 'Opponent', rank: 'Unranked', avatar: 'OP' }
+const guest: PlayerInfo = { id: 'guest', name: 'Opponent', rank: 'Unranked', avatar: 'OP' }
 
 function App() {
   const [screen, setScreen] = useState<'home' | 'setup' | 'auth' | 'searching' | 'match' | 'learn' | 'puzzles' | 'community'>('home')
@@ -43,14 +43,14 @@ function App() {
     const metadata = auth.user?.user_metadata ?? {}
     const name = metadata.full_name || metadata.name || metadata.user_name || auth.user?.email?.split('@')[0] || 'Go player'
     const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'GP'
-    return { name, rank: metadata.rank || 'Unranked', avatar: initials }
+    return { id: auth.user?.id ?? 'guest', name, rank: metadata.rank || 'Unranked', avatar: initials }
   }, [auth.user, screen])
   const [timeControl, setTimeControl] = useState(presets[1])
   const [custom, setCustom] = useState({ minutes: 30, byoSeconds: 30, periods: 3 })
   const [board, setBoard] = useState<Board>(createBoard)
   const [player, setPlayer] = useState<Stone>('black')
   const [userColor, setUserColor] = useState<Stone>('black')
-  const [opponent, setOpponent] = useState<PlayerInfo>({ name: 'Opponent', rank: 'Unranked', avatar: 'OP' })
+  const [opponent, setOpponent] = useState<PlayerInfo>(guest)
   const [moves, setMoves] = useState<Move[]>([])
   const [moveBoards, setMoveBoards] = useState<Board[]>([])
   const [viewedMove, setViewedMove] = useState<number | null>(null)
@@ -143,8 +143,12 @@ function App() {
         } catch { /* Realtime state remains visible during a transient network failure. */ }
       }
       void sync()
-      const timer = window.setInterval(() => { void sync() }, 1000)
-      return () => { cancelled = true; window.clearInterval(timer) }
+      const serverTimer = window.setInterval(() => { void sync() }, 5000)
+      const displayTimer = window.setInterval(() => {
+        if (cancelled) return
+        setClocks((value) => ({ ...value, [player]: Math.max(0, value[player] - 1) }))
+      }, 1000)
+      return () => { cancelled = true; window.clearInterval(serverTimer); window.clearInterval(displayTimer) }
     }
     const timer = window.setInterval(() => {
       setClocks((value) => { const next = Math.max(0, value[player] - 1); if (next === 0 && timeControl.byoyomiSeconds > 0 && byoPeriods[player] > 0) { setByoPeriods((p) => ({ ...p, [player]: p[player] - 1 })); return { ...value, [player]: timeControl.byoyomiSeconds } } if (next === 0) { setStatus('timeout'); setMessage(`${player === 'black' ? 'Black' : 'White'} ran out of time`) } return { ...value, [player]: next } })
@@ -164,11 +168,18 @@ function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || screen !== 'match' || !matchId) return
-    return supabaseMatchService.subscribe(matchId, (next) => {
+    const applyMatch = (next: MatchState) => {
       const own = next.blackPlayer.id === auth.user?.id ? next.blackPlayer : next.whitePlayer
       const other = next.blackPlayer.id === auth.user?.id ? next.whitePlayer : next.blackPlayer
       setUserColor(own.id === next.blackPlayer.id ? 'black' : 'white'); setOpponent(other); setBoard(next.board); setPlayer(next.activeColor); setMoves(next.moves); setCaptures(next.captures); setClocks(next.clocks); setPasses(next.passes); setStatus(next.status); setMessage(next.status === 'playing' ? (next.activeColor === 'black' ? 'Black to play' : 'White to play') : 'Match complete'); setViewedMove(null)
-    })
+    }
+    const unsubscribe = supabaseMatchService.subscribe(matchId, applyMatch)
+    let cancelled = false
+    const refresh = async () => {
+      try { const next = await supabaseMatchService.getMatch(matchId); if (!cancelled) applyMatch(next) } catch { /* retain the last confirmed state during transient network failures */ }
+    }
+    const fallback = window.setInterval(() => { void refresh() }, 1000)
+    return () => { cancelled = true; window.clearInterval(fallback); unsubscribe() }
   }, [auth.user?.id, matchId, screen])
 
   const play = async (point: Point) => { if (screen !== 'match' || status !== 'playing' || viewedMove !== null) return; if (localMode) { const result = tryMove(board, point, player, positionHistory.at(-2)); if (!result.valid) { setMessage(result.reason); return } const nextMoves = [...moves, { ...point, player, captured: result.captured, label: coordinate(point) }]; setHistory((items) => [...items, { board, player, captures }]); setBoard(result.board); setMoves(nextMoves); setMoveBoards((items) => [...items, result.board]); setCaptures((value) => ({ ...value, [player]: value[player] + result.captured })); setPositionHistory((items) => [...items, boardKey(result.board)]); setPlayer(player === 'black' ? 'white' : 'black'); setPasses(0); return } setMessage('Submitting move…'); try { await supabaseMatchService.submitMove(matchId, { ...point, player, captured: 0, label: coordinate(point) }); const nextState = await supabaseMatchService.getMatch(matchId); setBoard(nextState.board); setMoves(nextState.moves); setCaptures(nextState.captures); setPlayer(nextState.activeColor); setClocks(nextState.clocks); setPasses(nextState.passes); setMessage(nextState.activeColor === 'black' ? 'Black to play' : 'White to play') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Move was rejected') } }

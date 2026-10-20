@@ -19,6 +19,7 @@ export type MatchState = {
   passes: number
   result?: Stone | 'draw'
   lastMoveAt: string
+  timeControl: TimeControl
 }
 
 export interface MatchService {

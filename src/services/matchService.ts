@@ -35,7 +35,7 @@ function mapMatch(row: Record<string, unknown>, profiles: Record<string, unknown
   const blackId = String(row.black_player_id ?? '')
   const whiteId = String(row.white_player_id ?? '')
   return {
-    matchId: String(row.id), status: row.status as MatchState['status'], blackPlayer: (row.black_player ?? mapPlayer(blackId, profiles)) as MatchState['blackPlayer'], whitePlayer: (row.white_player ?? mapPlayer(whiteId, profiles)) as MatchState['whitePlayer'], activeColor: row.active_color as MatchState['activeColor'], clocks: clocks ?? { black: Math.floor(Number(row.black_clock_ms ?? 0) / 1000), white: Math.floor(Number(row.white_clock_ms ?? 0) / 1000) }, board: row.board as MatchState['board'], moves: row.moves as Move[], captures: row.captures as MatchState['captures'], passes: Number(row.passes ?? 0), result: row.result as MatchState['result'], lastMoveAt: String(row.last_move_at ?? '')
+    matchId: String(row.id), status: row.status as MatchState['status'], blackPlayer: (row.black_player ?? mapPlayer(blackId, profiles)) as MatchState['blackPlayer'], whitePlayer: (row.white_player ?? mapPlayer(whiteId, profiles)) as MatchState['whitePlayer'], activeColor: row.active_color as MatchState['activeColor'], clocks: clocks ?? { black: Math.floor(Number(row.black_clock_ms ?? 0) / 1000), white: Math.floor(Number(row.white_clock_ms ?? 0) / 1000) }, board: row.board as MatchState['board'], moves: row.moves as Move[], captures: row.captures as MatchState['captures'], passes: Number(row.passes ?? 0), result: row.result as MatchState['result'], lastMoveAt: String(row.last_move_at ?? ''), timeControl: row.time_control as MatchState['timeControl'] ?? { mainMinutes: 10, incrementSeconds: 0, byoyomiSeconds: 0, byoyomiPeriods: 0, label: 'Blitz' }
   }
 }
 
